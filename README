@@ -1,0 +1,1 @@
+GoLX is a stage lighting control solution written in Google Go. It is currently under heavy development. It will eventually feature a highly concurrent channel based architecture, a YACC powered command line interface and a JavaScript & WebSocket powered HTML interface to allow it to be on as many screens in the theatre as possible.
