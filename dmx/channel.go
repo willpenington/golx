@@ -9,47 +9,51 @@ import "fmt"
 type DMXChannel struct {
   universe *DMXUniverse
   channelNumber int
-  replace chan bool
+  output chan DMXValue
+  input chan DMXValue
 }
 
 func newDMXChannel(universe *DMXUniverse, channelNumber int) *DMXChannel {
   channel := new(DMXChannel)
   channel.universe = universe
   channel.channelNumber = channelNumber
-
-  channel.replace = make(chan bool)
-  go func() { _ = <-channel.replace }()
+  channel.input = nil
+  channel.output = make(chan DMXValue)
 
   return channel
+}
+
+func (channel *DMXChannel) InputChannel() chan DMXValue {
+  if channel.input == nil {
+    channel.buildInput()
+  }
+
+  return channel.input
+}
+
+func (channel *DMXChannel) OutputChannel() chan DMXValue {
+  return channel.output
 }
 
 func (channel *DMXChannel) setValue(val DMXValue) {
   channel.universe.setValue(channel.channelNumber, val)
 }
 
-func (channel *DMXChannel) GetValue() DMXValue {
+func (channel *DMXChannel) Value() DMXValue {
   return channel.universe.getValue(channel.channelNumber)
 }
 
-func (channel *DMXChannel) Patch(input chan DMXValue) {
+func (channel *DMXChannel) buildInput() {
 
-  fmt.Println("Patching channel ", channel)
-  fmt.Println("Patching with channel.replace == nil as ", channel.replace == nil)
-  channel.replace <- true // Make sure any other goroutine has stopped before patching
+  channel.input = make(chan DMXValue)
 
   go func() {
-    for {
-      select {
-      case _ = <-channel.replace:
-        return
-      case val := <-input:
-        channel.setValue(val)
-      }
+    for val := range channel.input {
+      channel.setValue(val)
     }
   }()
 }
 
-func (channel *DMXChannel) Unpatch() {
-  channel.replace <- true
-  go func() { _ = <-channel.replace }()
+func (channel *DMXChannel) sendOutput() {
+  channel.output <- channel.Value()
 }
