@@ -25,6 +25,11 @@ type OutputPort {
 var inputPatches map[InputPort] *patch
 var outputPatches map[OutputPort] *patch
 
+func init() {
+  inputPatches = make(map[InputPort] *patch)
+  outputPatches = make(map[OutputPort] *patch)
+}
+
 func Patch(output OutputPort, input InputPort) error {
 
   _, inExists := inputPatches[input]
