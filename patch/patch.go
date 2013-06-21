@@ -15,11 +15,9 @@ type patch struct {
 }
 
 type InputPort interface {
-  InputChannel() chan interface {}
 }
 
 type OutputPort interface {
-  OutputChannel() chan interface {}
 }
 
 var inputPatches map[InputPort] *patch
@@ -29,6 +27,35 @@ func init() {
   inputPatches = make(map[InputPort] *patch)
   outputPatches = make(map[OutputPort] *patch)
 }
+
+func getChan(i interface {}, method string) (reflect.Value, error) {
+  val := reflect.ValueOf(i)
+
+  m := val.MethodByName(method)
+
+  if !m.IsValid() {
+    return reflect.ValueOf(nil), errors.New("does not support " + method + " method.")
+  }
+
+  if m.Type().NumIn() != 0 {
+    return reflect.ValueOf(nil), errors.New("requires incorrect number of arguments for " + method + "method.")
+  }
+
+  if m.Type().NumOut() != 1 {
+    return reflect.ValueOf(nil), errors.New("returns too many values for " + method + "method.")
+  }
+
+  retType := m.Type().Out(0)
+
+  if retType.Kind() != reflect.Chan {
+    return reflect.ValueOf(nil), errors.New("does not return a channel from " + method + "method.")
+  }
+
+  args := make([]reflect.Value, 0)
+  result := m.Call(args)
+  return result[0], nil
+}
+
 
 func Patch(output OutputPort, input InputPort) error {
 
@@ -43,8 +70,17 @@ func Patch(output OutputPort, input InputPort) error {
     return errors.New("Output is already patched")
   }
 
-  inChannel := reflect.ValueOf(input.InputChannel())
-  outChannel := reflect.ValueOf(output.OutputChannel())
+  inChannel, err := getChan(input, "InputChannel")
+
+  if err != nil {
+    return errors.New("Input " + err.Error())
+  }
+
+  outChannel, err := getChan(output, "OutputChannel")
+
+  if err != nil {
+    return errors.New("Output " + err.Error())
+  }
 
   inType := inChannel.Type().Elem()
   outType := outChannel.Type().Elem()
@@ -62,25 +98,21 @@ func Patch(output OutputPort, input InputPort) error {
   inputPatches[input] = p
   outputPatches[output] = p
 
-  recvCase := new(reflect.SelectCase)
-  recvCase.Chan = outChannel
-  recvCase.Dir = SelectRecv
+  listenSelect := make([]reflect.SelectCase, 2)
 
-  quitCase := new(reflect.SelectCase)
-  quitCase.Chan = reflect.ValueOf(quit)
-  quitCase.Dir = SelectRecv
+  listenSelect[0].Chan = outChannel
+  listenSelect[0].Dir = reflect.SelectRecv
 
-  listenSelect := make([]reflect.SelectCase)
-  append(listenSelect, recvCase)
-  append(listenSelect, quitCase)
+  listenSelect[1].Chan = reflect.ValueOf(p.quit)
+  listenSelect[1].Dir = reflect.SelectRecv
 
   go func() {
     for {
-      chosen, val, ok := reflect.Select(listenSelect)
+      chosen, val, _ := reflect.Select(listenSelect)
 
       if chosen == 0 {
         // Recieved from the output port
-        sendVal := val.ConvertTo(outType)
+        sendVal := val.Convert(outType)
         inChannel.Send(sendVal)
       } else if chosen == 1 {
         // Recieved a quit signal
