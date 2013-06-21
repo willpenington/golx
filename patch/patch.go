@@ -14,12 +14,12 @@ type patch struct {
   quit chan bool
 }
 
-type InputPort {
-  InputChannel() interface {}
+type InputPort interface {
+  InputChannel() chan interface {}
 }
 
-type OutputPort {
-  OutputChannel() interface {}
+type OutputPort interface {
+  OutputChannel() chan interface {}
 }
 
 var inputPatches map[InputPort] *patch
@@ -43,17 +43,17 @@ func Patch(output OutputPort, input InputPort) error {
     return errors.New("Output is already patched")
   }
 
-  inChannel := input.InputChannel()
-  outChannel := output.OutputChannel()
+  inChannel := reflect.ValueOf(input.InputChannel())
+  outChannel := reflect.ValueOf(output.OutputChannel())
 
-  inType := reflect.TypeOf(inChannel)
-  outType := reflect.TypeOf(outChannel)
+  inType := inChannel.Type().Elem()
+  outType := outChannel.Type().Elem()
 
   if !(outType.AssignableTo(inType)) {
     return errors.New("Input and Output are not compatible")
   }
 
-  p := make(patch)
+  p := new(patch)
 
   p.input = input
   p.output = output
@@ -62,16 +62,32 @@ func Patch(output OutputPort, input InputPort) error {
   inputPatches[input] = p
   outputPatches[output] = p
 
+  recvCase := new(reflect.SelectCase)
+  recvCase.Chan = outChannel
+  recvCase.Dir = SelectRecv
+
+  quitCase := new(reflect.SelectCase)
+  quitCase.Chan = reflect.ValueOf(quit)
+  quitCase.Dir = SelectRecv
+
+  listenSelect := make([]reflect.SelectCase)
+  append(listenSelect, recvCase)
+  append(listenSelect, quitCase)
+
   go func() {
     for {
-      select {
-        case val := <-outChannel
-          inChannel <- val
-        case _ = <-p.quit
-          return
+      chosen, val, ok := reflect.Select(listenSelect)
+
+      if chosen == 0 {
+        // Recieved from the output port
+        sendVal := val.ConvertTo(outType)
+        inChannel.Send(sendVal)
+      } else if chosen == 1 {
+        // Recieved a quit signal
+        return
       }
     }
-  }
+  }()
 
   return nil
 }
