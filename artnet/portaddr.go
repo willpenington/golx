@@ -1,5 +1,5 @@
 /*
-Port Address helpers
+Artnet Addressing
 
 Translates to and from the 15 bit address encoding used in Art-Net packets to
 the three 8 bit human readable numbers
@@ -15,21 +15,47 @@ const (
   netOffset uint = 8
 )
 
-func BuildPortAddr(net uint8, sub uint8, uni uint8) uint16 {
-  uniPart := (uint16(uni) << uniOffset) & uniMask
-  subPart := (uint16(sub) << subOffset) & subMask
-  netPart := (uint16(net) << netOffset) & netMask
+type ArtnetAddress struct {
+  universe uint8
+  subnet uint8
+  network uint8
+}
+
+func (addr ArtnetAddress) Universe() uint8 {
+  return addr.universe
+}
+
+func (addr ArtnetAddress) Subnet() uint8 {
+  return addr.subnet
+}
+
+func (addr ArtnetAddress) Network() uint8 {
+  return addr.network
+}
+
+func NewArtnetAddress(universe uint8, subnet uint8, network uint8) ArtnetAddress {
+  var addr ArtnetAddress
+
+  addr.universe = universe
+  addr.subnet = subnet
+  addr.network = network
+
+  return addr
+}
+
+func (addr ArtnetAddress) Encode() uint16 {
+  uniPart := (uint16(addr.universe) << uniOffset) & uniMask
+  subPart := (uint16(addr.subnet) << subOffset) & subMask
+  netPart := (uint16(addr.network) << netOffset) & netMask
   return uniPart | subPart | netPart
 }
 
-func GetUniverse(addr uint16) uint8 {
-  return uint8((addr & uniMask) >> uniOffset)
-}
+func DecodeArtnetAddress(portAddr uint16) ArtnetAddress {
+  var addr ArtnetAddress
 
-func GetSubnet(addr uint16) uint8 {
-  return uint8((addr & subMask) >> subOffset)
-}
+  addr.universe = uint8((portAddr & uniMask) >> uniOffset)
+  addr.subnet = uint8((portAddr & subMask) >> subOffset)
+  addr.network = uint8((portAddr & netMask) >> netOffset)
 
-func GetNet(addr uint16) uint8 {
-  return uint8((addr & netMask) >> netOffset)
+  return addr
 }

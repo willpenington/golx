@@ -4,7 +4,6 @@ most recent values
 */
 package dmx
 
-import "math"
 
 const (
   UniverseSize int = 512
@@ -29,8 +28,8 @@ func NewDMXUniverse() *DMXUniverse {
 
 func (u *DMXUniverse) listen() {
   for frame := range u.input {
-    for i := 1; i <= math.Min(len(u.data), len(frame)); i++ {
-      setValue(i, frame[i])
+    for i := 1; i <= len(u.data) && i <= len(frame); i++ {
+      u.setValue(i, frame[i])
     }
   }
 }
@@ -53,7 +52,7 @@ func (u *DMXUniverse) setValue(channel int, value DMXValue) {
   if value != u.getValue(channel) {
     u.data[channel - 1] = value
     u.output <- u.data
-    u.GetChannel(channel).sendValue()
+    u.GetChannel(channel).sendOutput()
   }
 }
 
@@ -61,10 +60,10 @@ func (u *DMXUniverse) getValue(channel int) DMXValue {
   return u.data[channel - 1]
 }
 
-func (u *DMXUniverse) InputChannel() chan DMXFrame {
+func (u *DMXUniverse) Input() chan DMXFrame {
   return u.input
 }
 
-func (u *DMXUniverse) OutputChannel() chan DMXFrame {
+func (u *DMXUniverse) Output() chan DMXFrame {
   return u.output
 }

@@ -10,9 +10,7 @@ import (
   "errors"
   "bytes"
   "net"
-  "fmt"
   "encoding/binary"
-  "io"
   "time"
   "golx/dmx"
 )
@@ -23,9 +21,7 @@ Data (excluding header) included in the ArtDmx Packet
 type artDmx struct {
   sequence uint8
   physical uint8
-  net uint8
-  sub uint8
-  universe uint8
+  address ArtnetAddress
   frame dmx.DMXFrame
 }
 
@@ -36,20 +32,15 @@ func handleArtDmx(r *bytes.Buffer, source *net.UDPAddr) error {
 
   artdmx := parseArtDmx(r)
 
-  // Use the ArtNet encoding to map the ArtNet address to an integer
-  portAddr := BuildPortAddr(artdmx.net, artdmx.sub, artdmx.universe)
-  recipient, ok := inputUniverseChannels[portAddr]
-
-  // Send the frame to the recipient channel if exists
-  if ok && recipient != nil {
-    recipient <- artdmx.frame
-  }
+  // Forward the packet to the universe it is addressed to
+  universe := GetArtnetUniverse(artdmx.address)
+  universe.netInput <- artdmx
 
   return nil
 }
 
 // Parse a byte stream to a artDmx packet struct
-func parseartDmx(r *io.Reader) *artDmx {
+func parseArtDmx(r *bytes.Buffer) *artDmx {
   artdmx := new(artDmx)
 
   var portAddr uint16
@@ -60,9 +51,7 @@ func parseartDmx(r *io.Reader) *artDmx {
   binary.Read(r, binary.LittleEndian, &portAddr)
   binary.Read(r, binary.BigEndian, &length)
 
-  artdmx.net = GetNet(portAddr)
-  artdmx.sub = GetSubnet(portAddr)
-  artdmx.universe = GetUniverse(portAddr)
+  artdmx.address = DecodeArtnetAddress(portAddr)
 
   artdmx.frame = make(dmx.DMXFrame, length)
 
@@ -84,7 +73,7 @@ func sendArtDmx(artdmx *artDmx, addr *net.UDPAddr) error {
   WriteHeader(buf, OpDmx)
 
   // Encode the port address
-  portAddr := BuildPortAddr(artdmx.net, artdmx.sub, artdmx.universe)
+  portAddr := artdmx.address.Encode()
 
   // Write the binary values onto the buffer
   binary.Write(buf, binary.LittleEndian, artdmx.sequence)
@@ -98,13 +87,13 @@ func sendArtDmx(artdmx *artDmx, addr *net.UDPAddr) error {
   }
 
   // Use the central network connection to dispatch the packet
-  SendPacket(buf.Bytes(), addr)
+  sendPacket(buf.Bytes(), addr)
 
   return nil
 }
 
 // Get a channel that returns all DMX data sent to the Art-Net address
-func InputArtnetUniverse(network uint8, subnet uint8, universe uint8) (chan dmx.DMXFrame, error) {
+func InputArtnetUniverse(addr ArtnetAddress) (chan dmx.DMXFrame, error) {
 
   // Initialise the input channel list if needed 
   if inputUniverseChannels == nil {
@@ -112,7 +101,7 @@ func InputArtnetUniverse(network uint8, subnet uint8, universe uint8) (chan dmx.
   }
 
   // Build the Art-Net encoded address for lookup
-  portAddr := BuildPortAddr(network, subnet, universe)
+  portAddr := addr.Encode()
 
   // Check if an output channel already exists
   _, exists := inputUniverseChannels[portAddr]
@@ -131,22 +120,22 @@ func InputArtnetUniverse(network uint8, subnet uint8, universe uint8) (chan dmx.
 Build a channel that will send DMX Data it recieves to the specified 
 Art-Net address 
 */
-func OutputArtnetUniverse(network uint8, subnet uint8, universe uint8, physical uint8) (chan dmx.DMXFrame, error) {
+func outputArtnetUniverse(addr ArtnetAddress, physical uint8) (chan dmx.DMXFrame, error) {
 
   // For the moment, all packets are sent to broadcast. When Art-Pol and
   // subscriptions are properly implemented this will be done with Unicast to
   // the correct address.
-  broadcastAddr, err := net.ResolveUDPAddr("udp", "2.255.255.255:6465")
-  if err != nil {
-    return nil, err
-  }
+  //broadcastAddr, err := net.ResolveUDPAddr("udp", "2.255.255.255:6465")
+  //if err != nil {
+  //  return nil, err
+  //}
 
   c := make(chan dmx.DMXFrame)
 
   // Keepalive
-  slowTick := make(chan time.Time)
+  slowTick := time.After(0 * time.Second)
   // Rate limiting
-  fastTick := make(chan time.Time)
+  var fastTick (<-chan time.Time)
 
   sequence := uint8(0)
 
@@ -157,26 +146,24 @@ func OutputArtnetUniverse(network uint8, subnet uint8, universe uint8, physical 
 
     // Build the packet
     artdmx := new(artDmx)
-    artdmx.universe = universe
-    artdmx.sub = subnet
-    artdmx.net = network
+    artdmx.address = addr
     artdmx.sequence = sequence
     artdmx.physical = physical
     artdmx.frame = frame
 
-    SendartDmx(artdmx, broadcastAddr)
+    addr.Encode()
   }
 
   go func() {
     frame := dmx.DMXFrame(nil)
     // Limit rate to at most 40 frames a second
-    for _ = <-fastTick {
+    for _ = range fastTick {
       select {
       case frame := <-c:
         sendFrame(frame)
         // Set timeouts
         fastTick = time.After(25 * time.Millisecond)
-        slowTick = time.After(4 * time.Minutes)
+        slowTick = time.After(4 * time.Minute)
       case _ = <-slowTick:
         // slowTick only gets data after frame has recieved data and therefore
         // frame should not be nil at this point
@@ -184,9 +171,6 @@ func OutputArtnetUniverse(network uint8, subnet uint8, universe uint8, physical 
       }
     }
   }()
-
-  // Provide the first fast tick to kick start the listner
-  fastTick <- time.Now()
 
   return c, nil
 }

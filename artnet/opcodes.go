@@ -58,7 +58,7 @@ func HandlerByOpcode(opcode Opcode) (func(r *bytes.Buffer, source *net.UDPAddr) 
   case OpPoll:
     return HandleArtPol, nil
   case OpDmx:
-    return HandleArtDmx, nil
+    return handleArtDmx, nil
   }
   return nil, errors.New("Opcode not implemented")
 }

@@ -4,8 +4,6 @@ in a universes. Needs rewriting.
 */
 package dmx
 
-import "fmt"
-
 type DMXChannel struct {
   universe *DMXUniverse
   channelNumber int
@@ -23,7 +21,7 @@ func newDMXChannel(universe *DMXUniverse, channelNumber int) *DMXChannel {
   return channel
 }
 
-func (channel *DMXChannel) InputChannel() chan DMXValue {
+func (channel *DMXChannel) Input() chan DMXValue {
   if channel.input == nil {
     channel.buildInput()
   }
@@ -31,7 +29,7 @@ func (channel *DMXChannel) InputChannel() chan DMXValue {
   return channel.input
 }
 
-func (channel *DMXChannel) OutputChannel() chan DMXValue {
+func (channel *DMXChannel) Output() chan DMXValue {
   return channel.output
 }
 
