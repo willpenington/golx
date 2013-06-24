@@ -50,7 +50,7 @@ func main() {
 
   v = <-c.output
   fmt.Println(v)
-
+  /*
   patch.Unpatch(a, b)
   patch.Unpatch(b, c)
 
@@ -60,5 +60,5 @@ func main() {
 
   v = <-b.output
   fmt.Println(v)
-
+  */
 }

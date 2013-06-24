@@ -4,6 +4,7 @@ import (
   "golx/dmx"
   "time"
   "net"
+  "fmt"
 )
 
 type ArtnetUniverse struct {
@@ -68,6 +69,10 @@ func newArtnetUniverse(address ArtnetAddress) *ArtnetUniverse {
   go universe.netSend()
 
   return universe
+}
+
+func (u *ArtnetUniverse) String() string {
+  return "[Artnet Universe @ " + u.address.String() + "]"
 }
 
 func (u *ArtnetUniverse) Input() chan dmx.DMXFrame {
@@ -151,11 +156,13 @@ func (u *ArtnetUniverse) rateLimitInput() chan dmx.DMXFrame {
           newData = false
         } else {
           last = <-u.input
+          fmt.Println("Artnet got data")
           out <- last
         }
         tick = time.After(u.rateLimit)
       case last = <-u.input:
         newData = true
+        fmt.Println("Artnet got data")
       }
     }
   }()

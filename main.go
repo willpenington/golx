@@ -7,12 +7,31 @@ tries to send some test data. At the moment it is primarily for debugging.
 package main
 
 import (
-	"fmt"
+  "fmt"
+  "time"
 	"golx/artnet"
 	"golx/dmx"
   "golx/patch"
-	"time"
+  "golx/dmx/dmxdimmer"
+  // "golx/dmx/dmxfixture"
+  "golx/data/intensity"
 )
+
+type ticker bool
+
+func (t ticker) Output() chan dmx.DMXValue {
+  c := make(chan dmx.DMXValue)
+  tick := time.Tick(1 * time.Second)
+
+  go func() {
+    for now := range tick {
+      fmt.Println("Ticking!")
+      c <- dmx.DMXValue(now.Second())
+    }
+  }()
+
+  return c
+}
 
 func main() {
 	anUniv := artnet.GetArtnetUniverse(artnet.NewArtnetAddress(0,0,0))
@@ -20,21 +39,75 @@ func main() {
 
   patch.Patch(universe, anUniv)
 
-	tick := time.Tick(1 * time.Second)
-	channelNumber := 0
+  dimmers := make([]*dmxdimmer.DMXDimmer, 2)
 
-	for now := range tick {
-		channelNumber += 1
+  for i := 1; i < 3; i++ {
+    dimmer := dmxdimmer.NewDMXDimmer()
+    err := patch.Patch(dimmer.Intensity().DMXOut(), universe.GetChannel(i))
 
-    channel := universe.GetChannel(channelNumber)
+    if err != nil {
+      fmt.Println(err.Error())
+    }
 
-    channel.Input() <- dmx.DMXValue(now.Second())
+    dimmers[i - 1] = dimmer
+  }
 
-		fmt.Println("Value sent")
+  // t := ticker(true)
 
-		if channelNumber == 512 {
-			return
-		}
-	}
+  // err := patch.Patch(t, universe.GetChannel(7))
 
+  // if err != nil {
+  //  fmt.Println(err.Error())
+  //}
+
+  // universe.GetChannel(1).Input() <- dmx.DMXValue(3)
+
+  fmt.Println("Getting a new channel")
+  fmt.Println("Value for intensity: ", dimmers[0].Intensity().Value())
+  c1 := dimmers[0].Intensity().Input()
+  _ = <-time.After(1 * time.Second)
+
+  fmt.Println("Setting intensity on first channel to 0.5")
+  fmt.Println("Value for intensity: ", dimmers[0].Intensity().Value())
+  c1 <- intensity.Intensity(0.5)
+  _ = <-time.After(1 * time.Second)
+
+  fmt.Println("Setting intensity on first channel to 0.6")
+  fmt.Println("Value for intensity: ", dimmers[0].Intensity().Value())
+  c1 <- intensity.Intensity(0.6)
+  _ = <-time.After(1 * time.Second)
+
+  fmt.Println("Getting another new channel")
+  fmt.Println("Value for intensity: ", dimmers[0].Intensity().Value())
+  c2 := dimmers[0].Intensity().Input()
+  _ = <-time.After(1 * time.Second)
+
+  fmt.Println("Setting intensity on second channel to 0.7")
+  fmt.Println("Value for intensity: ", dimmers[0].Intensity().Value())
+  c2 <- intensity.Intensity(0.7)
+  _ = <-time.After(1 * time.Second)
+
+  fmt.Println("Setting intensity on first channel to 0.3")
+  fmt.Println("Value for intensity: ", dimmers[0].Intensity().Value())
+  c1 <- intensity.Intensity(0.3)
+  _ = <-time.After(1 * time.Second)
+
+  fmt.Println("Releasing second channel")
+  fmt.Println("Value for intensity: ", dimmers[0].Intensity().Value())
+  close(c2)
+  _ = <-time.After(1 * time.Second)
+
+  fmt.Println("Setting intensity on first channel to 0.9")
+  fmt.Println("Value for intensity: ", dimmers[0].Intensity().Value())
+  c1 <- intensity.Intensity(0.9)
+  _ = <-time.After(1 * time.Second)
+
+  fmt.Println("Final value for intensity: ", dimmers[0].Intensity().Value())
+
+  // param := dmxfixture.NewDMXParam(nil)
+  // patch.Patch(param, universe.GetChannel(10))
+  // param.SetValue(dmx.DMXValue(100))
+  // universe.GetChannel(11).Input() <- dmx.DMXValue(101)
+
+  _ = <-time.After(1 * time.Second)
 }

@@ -6,6 +6,8 @@ the three 8 bit human readable numbers
 */
 package artnet
 
+import "fmt"
+
 const (
   uniMask uint16 = 0x000F
   uniOffset uint = 0
@@ -31,6 +33,10 @@ func (addr ArtnetAddress) Subnet() uint8 {
 
 func (addr ArtnetAddress) Network() uint8 {
   return addr.network
+}
+
+func (addr ArtnetAddress) String() string {
+  return fmt.Sprintf("(%d,%d,%d)", addr.universe, addr.subnet, addr.network)
 }
 
 func NewArtnetAddress(universe uint8, subnet uint8, network uint8) ArtnetAddress {

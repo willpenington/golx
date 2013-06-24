@@ -4,6 +4,8 @@ in a universes. Needs rewriting.
 */
 package dmx
 
+import "fmt"
+
 type DMXChannel struct {
   universe *DMXUniverse
   channelNumber int
@@ -19,6 +21,10 @@ func newDMXChannel(universe *DMXUniverse, channelNumber int) *DMXChannel {
   channel.output = make(chan DMXValue)
 
   return channel
+}
+
+func (channel *DMXChannel) String() string {
+  return fmt.Sprintf("[%s.%d]", channel.universe.String(), channel.channelNumber)
 }
 
 func (channel *DMXChannel) Input() chan DMXValue {
@@ -47,6 +53,7 @@ func (channel *DMXChannel) buildInput() {
 
   go func() {
     for val := range channel.input {
+      fmt.Println("DMXChannel got data: ", val)
       channel.setValue(val)
     }
   }()

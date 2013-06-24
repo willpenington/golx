@@ -4,6 +4,7 @@ most recent values
 */
 package dmx
 
+import "fmt"
 
 const (
   UniverseSize int = 512
@@ -26,6 +27,10 @@ func NewDMXUniverse() *DMXUniverse {
   return universe
 }
 
+func (u *DMXUniverse) String() string {
+  return "DMXUniverse"
+}
+
 func (u *DMXUniverse) listen() {
   for frame := range u.input {
     for i := 1; i <= len(u.data) && i <= len(frame); i++ {
@@ -41,7 +46,7 @@ func (u *DMXUniverse) buildChannels() {
 }
 
 func (u *DMXUniverse) GetChannel(channelNumber int) *DMXChannel {
-  return u.channels[channelNumber]
+  return u.channels[channelNumber - 1]
 }
 
 func (u *DMXUniverse) Channels() *[]*DMXChannel {
@@ -49,6 +54,7 @@ func (u *DMXUniverse) Channels() *[]*DMXChannel {
 }
 
 func (u *DMXUniverse) setValue(channel int, value DMXValue) {
+  fmt.Println("Universe got data")
   if value != u.getValue(channel) {
     u.data[channel - 1] = value
     u.output <- u.data

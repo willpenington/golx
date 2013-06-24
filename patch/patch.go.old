@@ -5,6 +5,7 @@ package patch
 
 import (
 	"errors"
+  "fmt"
 	"reflect"
 )
 
@@ -13,6 +14,9 @@ type patch struct {
 	output OutputPort
 	quit   chan bool
 }
+
+type Input interface {}
+type Output interface {}
 
 type InputPort interface {
 }
@@ -113,12 +117,17 @@ func Patch(output OutputPort, input InputPort) error {
 				// Recieved from the output port
 				sendVal := val.Convert(outType)
 				inChannel.Send(sendVal)
+        if sendVal.Kind() == reflect.Uint8 {
+          fmt.Println("Sending ", uint8(sendVal.Uint()), " from ", output, " to ", input)
+        }
 			} else if chosen == 1 {
 				// Recieved a quit signal
 				return
 			}
 		}
 	}()
+
+  fmt.Println("Patched ", output, " to ", input)
 
 	return nil
 }
