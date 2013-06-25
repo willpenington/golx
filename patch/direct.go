@@ -1,10 +1,15 @@
 package patch
 
+// Core direct patching functionallity
+
 import (
   "reflect"
   "errors"
   "fmt"
 )
+
+
+// Internal representation of a patch
 
 type patchData struct {
   inputDelegator reflect.Value
@@ -20,6 +25,8 @@ type patchData struct {
   stop chan bool
 }
 
+// Request structures to send data over a channel
+
 type patchRequest struct {
   Output interface {}
   OutputDelegator interface {}
@@ -33,18 +40,27 @@ type unpatchRequest struct {
   Input interface {}
 }
 
+// Information about the current patching. These variable should only be used
+// by functions called from the patch manager to keep the information consistent
+
+// Patches by the objects they link
 var inputPatches map[reflect.Value] map[*patchData] bool
 var outputPatches map[reflect.Value] map[*patchData] bool
 
+
+// Patches by the channels they use
 var inputChanPatches map[reflect.Value] *patchData
 var outputChanPatches map[reflect.Value] *patchData
 
-var newPatchRequest chan patchRequest
+// Channels for communicating with the patch manager. These should only be used
+// by the patch manager and the function matching the request type
+var newPatchRequest chan patchRequest 
 var newPatchError chan error
 
 var newUnpatchRequest chan unpatchRequest
 var newUnpatchError chan error
 
+// Set up data, channels and start the patch manager
 func init() {
   inputPatches = make(map[reflect.Value] (map[*patchData] bool))
   outputPatches = make(map[reflect.Value] (map[*patchData] bool))
@@ -106,18 +122,22 @@ func (dir patchDirection) SetMethod() string {
 
 // Returns the type the object uses for direct patching
 func patchType(obj reflect.Value, dir patchDirection) (reflect.Type, error) {
+  // Try finding a type from the set channel method first as it is prefered
   setChanMethod, err := setChanMethod(obj, dir)
 
   if err == nil {
     return setChanMethod.Type().In(0), nil
   }
 
+  // If that fails try the get channel method
   getChanMethod, err := getChanMethod(obj, dir)
 
   if err == nil {
     return getChanMethod.Type().Out(0), nil
   }
 
+  // If neither works the object doesn't implement the correct interface and 
+  // doesn't support patching
   return reflect.TypeOf(nil), errors.New(dir.Label() + " does not support direct patching")
 }
 
@@ -125,20 +145,23 @@ func patchType(obj reflect.Value, dir patchDirection) (reflect.Type, error) {
 func getChanMethod(obj reflect.Value, dir patchDirection) (reflect.Value, error) {
   getChanMethod := obj.MethodByName(dir.GetMethod())
 
+  // Check the method actually exists
   if !getChanMethod.IsValid() {
     return reflect.ValueOf(nil), errors.New("Object does not implement " + dir.Label() + " patching")
   }
 
+  // Check it doesn't require arguments as we can't generate them
   if getChanMethod.Type().NumIn() != 0 {
     return reflect.ValueOf(nil), errors.New(dir.GetMethod() + " requires arguments")
   }
 
+  // Check it gives at least one output. We can ignore the others
   if getChanMethod.Type().NumOut() < 1 {
     return reflect.ValueOf(nil), errors.New(dir.GetMethod() + " does not return any value")
   }
 
+  // Check that the first output is a channel, otherwise it doesn't help us
   retType := getChanMethod.Type().Out(0)
-
   if retType.Kind() != reflect.Chan {
     return reflect.ValueOf(nil), errors.New(dir.GetMethod() + " does not return a channel")
   }
@@ -152,18 +175,20 @@ func setChanMethod(obj reflect.Value, dir patchDirection) (reflect.Value, error)
   method := obj.MethodByName(dir.SetMethod())
 
   fmt.Println("Checking method is valid")
+  // Check the method actually exists
   if !method.IsValid() {
     return reflect.ValueOf(nil), errors.New("Object does not implement " + dir.Label() + " patching")
   }
 
   fmt.Println("Looking at arguments")
+  // Check the method takes exactly one argument. We don't know what to pass if there are others
   if method.Type().NumIn() != 1 {
     return reflect.ValueOf(nil), errors.New(dir.SetMethod() + " requires wrong number of arguments")
   }
 
   fmt.Println("Getting argument type")
+  // Check the type of the first argument is a channel, because that's what were going to try and give it
   argType := method.Type().In(0)
-
   fmt.Println("Checking argument type")
   if argType.Kind() != reflect.Chan {
     return reflect.ValueOf(nil), errors.New(dir.SetMethod() + " does not take a channel as its argument")
@@ -173,20 +198,33 @@ func setChanMethod(obj reflect.Value, dir patchDirection) (reflect.Value, error)
   return method, nil
 }
 
+func canPatch(output, input interface {}) (bool, error) {
+  return canPatchVal(reflect.ValueOf(output), reflect.ValueOf(input))
+}
+
 // Check if an input and output can be directly patched together
-func canPatch(output, input reflect.Value) (bool, error) {
+func canPatchVal(output, input reflect.Value) (bool, error) {
+  // Get the type of the output
   outType, outErr := patchType(output, patchOutputDir)
 
+  // Rely on patchType to provide an error if it doesn't match the interface
   if outErr != nil {
     return false, errors.New("Output does not support patching")
   }
 
+  // Repeat for the input
   inType, inErr := patchType(input, patchInputDir)
 
   if inErr != nil {
     return false, errors.New("Input does not support patching")
   }
 
+  // Check the output is compatible with the input
+  /* This check is stricter than the one used by the actual patch system but
+     properly replicating it's check involves knowing the input and output both
+     use channel getters rather than setters. This check passes most things the
+     real one does, nothing it doesn't and is simpler to implement.
+  */
   if !(outType.AssignableTo(inType)) {
     return false, errors.New("Input and output are not compatible")
   }
@@ -198,6 +236,7 @@ func canPatch(output, input reflect.Value) (bool, error) {
 // output and input should be compatible channels
 // closing output closes input and quits
 func proxy(output, input reflect.Value, stop chan bool) {
+  // Build reflection select structure
   stopVal := reflect.ValueOf(stop)
 
   recvCase := reflect.SelectCase{Dir: reflect.SelectRecv, Chan: output }
@@ -206,35 +245,51 @@ func proxy(output, input reflect.Value, stop chan bool) {
   recvSelect := []reflect.SelectCase{recvCase, stopCase}
 
   for {
+    // Listen from data from output
     chosen, recv, recvOK := reflect.Select(recvSelect)
 
     switch chosen {
     case 0:
       if recvOK {
-        sendCase := reflect.SelectCase{Dir: reflect.SelectSend, Chan: input, Send: recv}
+        // Convert the data to the type expected by the input
+        data := recv.Convert(input.Type().Elem())
+
+        // Build a select case for sending the data
+        sendCase := reflect.SelectCase{Dir: reflect.SelectSend, Chan: input, Send: data}
         sendSelect := []reflect.SelectCase{sendCase, stopCase}
+
+        // Send the data or wait for a quit
         sendChosen, _, _ := reflect.Select(sendSelect)
 
         switch sendChosen {
         case 0:
+          // Data sent sucessfully
         case 1:
+          // Stop recieved
           return
         }
       } else {
+        // Close the input if the output is closed
         input.Close()
 
         // Listen for stop so to avoid blocking goroutines that don't know
-        // the proxy has stopped
+        // the proxy has stopped. The risk of leaking goroutines is lower than
+        // the risk of randomly blocking other functions that try and send a
+        // stop to the goroutine.
         _ = <-stop
 
         return
       }
     case 1:
+      // Stop recieved
       return
     }
   }
 }
 
+// Convert a patch request to a patchData struct
+// Prevents pointers to patchData being anywhere they
+// don't need to and hides a bit of reflection stuff
 func (req patchRequest) buildPatch() *patchData {
   patch := new(patchData)
 
@@ -247,9 +302,10 @@ func (req patchRequest) buildPatch() *patchData {
   return patch
 }
 
-// Add a new patch to the central patch manager
+// Build, configure and store a new patch
 func addPatch(req patchRequest) error {
   fmt.Println("Building patch data")
+  // Convert the request to a patchData struct
   patch := req.buildPatch()
 
   fmt.Println("Getting accessor methods")
@@ -260,15 +316,18 @@ func addPatch(req patchRequest) error {
   getInputChan, getInputChanErr := getChanMethod(patch.input, patchInputDir)
   fmt.Println("Retrieved accessors")
 
+  // Check the output supports at least one method of patching
   if setOutputChanErr != nil && getOutputChanErr != nil {
     return errors.New("Output does not support direct patching")
   }
 
+  // Check the input supports at least one method of patching
   if setInputChanErr != nil && getInputChanErr != nil {
     return errors.New("Input does not support direct patching")
   }
 
   // Flags indicate if the patch or object is supplying the channel
+  // This is the same information as the errors but in a more readable form
   setOutput := false
   setInput := false
 
@@ -281,7 +340,7 @@ func addPatch(req patchRequest) error {
   }
 
   fmt.Println("Checking flags")
-  // Check that the output is compatible with the input
+  // Get the types of the channels being patched
   var outType reflect.Type
   var inType reflect.Type
 
@@ -297,33 +356,41 @@ func addPatch(req patchRequest) error {
     inType = getInputChan.Type().Out(0)
   }
 
+  // getChanMethod/setChanMethod garuntee the type is a channel so no check is needed
+
+  // Check that the types are compatible
   if (setInput || setOutput) && !(outType.AssignableTo(inType)) {
     return errors.New("Output is not compatible with input")
-  } else if !(outType.ConvertibleTo(inType)) {
+  } else if !(outType.Elem().ConvertibleTo(inType.Elem())) {
+    // If both ports are providing channels we can be less strict and convert in the
+    // proxy
     return errors.New("Output is not compatible with input")
   }
 
   fmt.Println("Loading existing data")
+  // Load the existing data
   inputPatchList, inputPatchListExists := inputPatches[patch.input]
   outputPatchList, outputPatchListExists := outputPatches[patch.output]
+
+  // Build new lists if they don't exist yet
+  if !outputPatchListExists {
+    outputPatchList = make(map[*patchData] bool)
+  }
 
   if !inputPatchListExists {
     inputPatchList = make(map[*patchData] bool)
   }
 
-  inputPatchList[patch] = true
-
-  if !outputPatchListExists {
-    outputPatchList = make(map[*patchData] bool)
-  }
-
-  outputPatchList[patch] = true
-
+  // Look for existing patches 
   for inPatch, _ := range inputPatchList {
-    if inPatch.output == patch.output || inPatch.outputDelegator == patch.output{
+    if inPatch.output == patch.output {
       return errors.New("Output and Input are already patched")
     }
   }
+
+  // Add the new patch to the lists
+  outputPatchList[patch] = true
+  inputPatchList[patch] = true
 
   var inputDelegatorPatchList map[*patchData] bool
   var inputDelegatorPatchListExists bool
@@ -335,7 +402,7 @@ func addPatch(req patchRequest) error {
     }
 
     for inPatch, _ := range inputDelegatorPatchList {
-      if inPatch.output == patch.output || inPatch.outputDelegator == patch.output{
+      if inPatch.output == patch.output {
         return errors.New("Output and Input are already patched")
       }
     }
