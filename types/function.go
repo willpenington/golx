@@ -36,7 +36,7 @@ func (ft FunctionType) Name() string {
 	return name
 }
 
-func (ft FunctionType) Type() {
+func (ft FunctionType) Type() Type {
   return MetaType()
 }
 

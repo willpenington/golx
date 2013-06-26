@@ -29,15 +29,15 @@ type Object interface {
 
 /* Simple type */
 type SimpleType struct {
-  Name string
+  TypeName string
 }
 
 func (st SimpleType) Name() string {
-  return st.Name
+  return st.TypeName
 }
 
 func (SimpleType) Type() Type {
-  return MetaType
+  return MetaType()
 }
 
 func (st SimpleType) Method(name string) Function {
@@ -46,9 +46,8 @@ func (st SimpleType) Method(name string) Function {
 
 /* Type of Type */
 /* All types should also be objects that give their type as the meta type */
-metaType := SimpleType{Name: "Type"}
 func MetaType() Type {
-  return metaType
+  return SimpleType{TypeName: "Type"}
 }
 
 /* Method calls */
