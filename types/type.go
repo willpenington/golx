@@ -12,12 +12,19 @@ custom methods. All methods are found using Go reflection.
 */
 package types
 
-// 
+// A 
 type Type interface {
 	Name() string
+  Method(name string) Method
+  Methods() []string
 }
 
 type Object interface {
 	Type() Type
-	Method(name string) Function
+	ObjectMethod(name string) Function
+}
+
+type Method interface {
+  // Returns a closure of the method over an object
+  Apply(Object) (Function, error)
 }
