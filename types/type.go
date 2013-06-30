@@ -12,7 +12,7 @@ custom methods. All methods are found using Go reflection.
 */
 package types
 
-// A 
+// Type 
 type Type interface {
 	Name() string
   Method(name string) Method

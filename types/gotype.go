@@ -53,7 +53,7 @@ func (obj GoObject) Type() Type {
 /*
 Retrieve methods on Go objects. Uses reflection to call 
 */
-func (obj GoObject) Method(name string) Function {
+func (obj GoObject) ObjectMethod(name string) Function {
   val := reflect.ValueOf(obj.val)
   method := val.MethodByName(name)
   if method.IsValid() {
@@ -77,7 +77,7 @@ func (t GoType) Method(name string) Method {
   gomethod, exists := t.refType.MethodByName(name)
   if exists {
     return GoMethod(gomethod)
-  } else
+  } else {
     return nil
   }
 }
@@ -89,7 +89,7 @@ func (t GoType) Methods() []string {
 
   for i := range mList {
     method := rt.Method(i)
-    mList[i] = method.Name()
+    mList[i] = method.Name
   }
 
   return mList
@@ -128,7 +128,7 @@ func GetFuncType(t reflect.Type) (FunctionType, error) {
 }
 
 func (f GoFunc) ObjectMethod(name string) Function {
-  return GoObject(f).Method(name)
+  return GoObject(f).ObjectMethod(name)
 }
 
 func (f GoFunc) FunctionType() FunctionType {
@@ -193,5 +193,5 @@ func (m GoMethod) Apply(obj Object) (Function, error) {
   }
 
   // It is much easier to let Go implement the actual closure
-  return Obj.ObjectMethod(reflect.Method(m).Name())
+  return obj.ObjectMethod(reflect.Method(m).Name), nil
 }

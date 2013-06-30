@@ -17,6 +17,14 @@ func (ft FunctionType) Rets() []Type {
   return ft.rets
 }
 
+func (ft FunctionType) Method(name string) Method {
+  return nil
+}
+
+func (ft FunctionType) Methods() []string {
+  return []string{}
+}
+
 type Function interface {
 	Type() Type
   FunctionType() FunctionType
