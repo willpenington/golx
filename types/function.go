@@ -6,28 +6,28 @@ type FunctionType struct {
 }
 
 func NewFunctionType(args, rets []Type) FunctionType {
-  return FunctionType{args: args, rets: rets}
+	return FunctionType{args: args, rets: rets}
 }
 
 func (ft FunctionType) Args() []Type {
-  return ft.args
+	return ft.args
 }
 
 func (ft FunctionType) Rets() []Type {
-  return ft.rets
+	return ft.rets
 }
 
 func (ft FunctionType) Method(name string) Method {
-  return nil
+	return nil
 }
 
 func (ft FunctionType) Methods() []string {
-  return []string{}
+	return []string{}
 }
 
 type Function interface {
 	Type() Type
-  FunctionType() FunctionType
+	FunctionType() FunctionType
 	Call(args []Object) ([]Object, error)
 }
 
@@ -51,5 +51,3 @@ func (ft FunctionType) Name() string {
 
 	return name
 }
-
-
